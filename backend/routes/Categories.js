@@ -14,14 +14,13 @@ const router = express.Router();
 router.get("/", getCategories);
 
 // Protected routes (admin only)
-router.post("/", verifyToken, verifyAdmin, upload.single("image"), addCategory);
+router.post("/", upload.single("image"), addCategory);
 router.put(
   "/:id",
-  verifyToken,
-  verifyAdmin,
+
   upload.single("image"),
   updateCategory
 );
-router.delete("/:id", verifyToken, verifyAdmin, deleteCategory);
+router.delete("/:id", deleteCategory);
 
 export default router;

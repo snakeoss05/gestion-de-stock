@@ -11,6 +11,8 @@ import orderRoutes from "./routes/order.js";
 import productRoutes from "./routes/product.js";
 import invoiceRoutes from "./routes/invoice.js";
 import wishlistRoutes from "./routes/wishlist.js";
+import cartRoutes from "./routes/Cart.js";
+import salesRoutes from "./routes/Sales.js";
 import CategoryRoutes from "./routes/Categories.js";
 import notificationRoutes from "./routes/Notification.js";
 import { fileURLToPath } from "url";
@@ -40,6 +42,8 @@ app.use(cookieParser());
 app.use(bodyParser.json());
 
 app.use("/api", userRoutese);
+app.use("/api/cart", cartRoutes);
+app.use("/api/sales", salesRoutes);
 app.use("/api/addresses", addressesRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/orders", orderRoutes);

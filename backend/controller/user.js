@@ -4,162 +4,59 @@ import jwt from "jsonwebtoken";
 import { sendMail } from "../controller/mailerSender.js";
 import mongoose from "mongoose";
 
-import { uploadToCloudinary } from "../storage/cloudinaryConfig.js";
-
-export async function Login(req, res) {
-  const { email, password } = req.body;
-
-  const secretOrPrivateKey = process.env.ACCESS_TOKEN_SECRET;
-
+const generateToken = (userId) => {
+  return jwt.sign({ id: userId }, process.env.ACCESS_TOKEN_SECRET, {
+    expiresIn: "30d",
+  });
+};
+// Register User
+export const registerUser = async (req, res) => {
   try {
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password are required." });
-    }
+    const { username, password, role } = req.body;
 
-    const user = await User.findOne({ email: email }).select("+password");
-
-    if (!user) {
-      return res.status(400).json({ message: "User not registered." });
-    }
-
-    if (!user.password) {
-      return res.status(500).json({ message: "User password is not defined." });
-    }
-
-    const isPasswordMatch = await user.matchPassword(password);
-
-    if (!isPasswordMatch) {
-      return res.status(400).json({ message: "Wrong password" });
-    }
-
-    const tokenData = {
-      userId: user._id,
-      role: user.role,
-    };
-    const token = jwt.sign(tokenData, secretOrPrivateKey, { expiresIn: "1d" });
-    const userWithoutPassword = user.toObject();
-    delete userWithoutPassword.password;
-    return res.status(200).json({
-      user: userWithoutPassword,
-      token: token,
-      message: "Login Successful",
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(400).json({ message: "Bad Request: " + error.message });
-  }
-}
-export async function Register(req, res) {
-  const {
-    name,
-    email,
-    password,
-    role,
-    companyName,
-    phone,
-    adresse,
-    ville,
-    codePostal,
-    numberTva,
-  } = req.body;
-
-  const secretOrPrivateKey = process.env.ACCESS_TOKEN_SECRET;
-
-  try {
-    // Validate required fields
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        success: status,
-        message: "Name, email, and password are required",
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid email format",
-      });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists",
-      });
-    }
-
-    // Handle file upload if present
-    let uploadedfile = null;
-    if (req.file) {
-      try {
-        const uploadResult = await uploadToCloudinary(req.file);
-        if (!uploadResult.success) {
-          return res.status(400).json({
-            success: false,
-            message: "Failed to upload document",
-          });
-        }
-        uploadedfile = uploadResult.imageUrl;
-      } catch (error) {
-        console.error("Error uploading file:", error);
-        return res.status(400).json({
-          success: false,
-          message: "Error uploading document",
-        });
-      }
-    }
-
-    // Create new user
-    const newUser = new User({
-      name,
-      email,
-      password,
+    const hashedPassword = await bcryptjs.hash(password, 10);
+    const user = await User.create({
+      username,
+      password: hashedPassword,
       role,
-      numberTva,
-      companyName,
-      address: {
-        adresse,
-        ville,
-        codePostal,
-        phone,
-      },
-      ConfirmationFile: uploadedfile,
     });
 
-    // Save user to database
-    const savedUser = await newUser.save();
-
-    // Generate JWT token
-    const tokenData = {
-      userId: savedUser._id,
-      role: savedUser.role,
-    };
-    const token = jwt.sign(tokenData, secretOrPrivateKey, {
-      expiresIn: "1d",
-    });
-
-    // Return success response
-    return res.status(201).json({
-      success: true,
-      user: savedUser,
-      token: token,
-      message: "Registration successful",
-    });
+    res.status(201).json({ message: "User created", userId: user._id });
   } catch (error) {
-    console.error("Registration error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "An error occurred during registration",
-      error: error.message,
-    });
+    res.status(500).json({ message: "Register failed", error });
   }
-}
+};
+
+// Login User
+export const loginUser = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    const user = await User.findOne({ username });
+
+    if (user && (await bcryptjs.compare(password, user.password))) {
+      res.json({
+        message: "Login successful",
+        user: user,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401).json({ message: "Invalid username or password" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// List all users
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select("-password");
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to get users", error });
+  }
+};
 
 export async function UpdateUser(req, res) {
   const userId = req.user._id;
@@ -209,6 +106,14 @@ export async function UpdateUserWithId(req, res) {
     return res.status(400).json({ error: err.message });
   }
 }
+export const getMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 export async function getProfile(req, res) {
   const id = req.params;
   try {
@@ -221,20 +126,6 @@ export async function getProfile(req, res) {
   }
 }
 
-export async function verifyOtp(req, res) {
-  const { email, otp } = req.body;
-  try {
-    const user = await User.findOne({ email: email });
-    if (!user || user.resetOtp !== otp || Date.now() > user.otpExpires) {
-      throw new Error("Invalid or expired OTP");
-    }
-    return res.status(200).json({ success: true, message: "OTP verified" });
-  } catch (err) {
-    return res.status(400).json({ message: "Bad Request: " + error.message });
-  }
-
-  // OTP is valid, allow the user to reset their password
-}
 export async function resetPassword(req, res) {
   const { email, newPassword } = req.body;
 
@@ -244,94 +135,4 @@ export async function resetPassword(req, res) {
   user.otpExpires = undefined;
   await user.save();
   console.log("Password reset successful");
-}
-export async function getUsers(req, res) {
-  const {
-    page = 1,
-    limit = 10,
-    search,
-    sortBy = "createdAt",
-    sortOrder = "desc",
-  } = req.query;
-
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
-
-  if (pageNum < 1 || limitNum < 1) {
-    return res.status(400).json({ error: "Invalid pagination parameters" });
-  }
-
-  const sortOptions = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
-  let filter = {};
-
-  if (search) {
-    const searchRegex = { $regex: search, $options: "i" };
-    filter = {
-      $or: [
-        { name: searchRegex },
-        { email: searchRegex },
-        { numberTva: searchRegex },
-        { companyName: searchRegex },
-      ],
-    };
-  }
-
-  try {
-    const results = await User.find(filter)
-      .sort(sortOptions)
-      .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
-
-    const totalUsers = await User.countDocuments(filter);
-    const totalPages = Math.ceil(totalUsers / limitNum);
-
-    return res.status(200).json({
-      results,
-      totalUsers,
-      totalPages,
-      currentPage: pageNum,
-      limit: limitNum,
-    });
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
-}
-export async function getUserNotVerified(req, res) {
-  const {
-    page = 1,
-    limit = 10,
-    sortBy = "createdAt",
-    sortOrder = "desc",
-    status,
-  } = req.query;
-  try {
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const sortOptions = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
-    const results = await User.find({ isVerified: status })
-      .sort(sortOptions)
-      .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
-    const totalUsers = await User.countDocuments({ isVerified: status });
-    const totalPages = Math.ceil(totalUsers / limitNum);
-
-    return res.status(200).json({
-      results,
-      totalUsers,
-      totalPages,
-      currentPage: pageNum,
-      limit: limitNum,
-    });
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
-}
-export async function SendOtp(req, res) {
-  const { email } = req.body;
-  try {
-    const results = await sendMail(email);
-    return res.status(200).json({ results: results });
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
 }

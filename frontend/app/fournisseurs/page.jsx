@@ -1,4 +1,4 @@
-import SupplierManager from "../../components/supplier-manager"
+import SupplierManager from "../../components/supplier/supplier-manager";
 
 export default function SuppliersPage() {
   return (
@@ -6,12 +6,16 @@ export default function SuppliersPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">Gestion des Fournisseurs</h1>
-            <p className="text-gray-600">Gérez vos fournisseurs et leurs informations</p>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              Gestion des Fournisseurs
+            </h1>
+            <p className="text-gray-600">
+              Gérez vos fournisseurs et leurs informations
+            </p>
           </div>
           <SupplierManager />
         </div>
       </div>
     </div>
-  )
+  );
 }

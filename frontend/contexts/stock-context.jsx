@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import { createContext, useContext, useState } from "react"
-import { useToast } from "@/hooks/use-toast"
+import { createContext, useContext, useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 // Unified product/stock database
 const INITIAL_STOCK_DATA = [
   {
     id: 1,
-    code_barre: "1234567890123",
-    productName: "Casque Sans Fil",
+    code_barre: "6192402816915",
+    productName: "afusidic",
     brandName: "TechSound",
     currentStock: 25,
     minStock: 10,
@@ -141,7 +141,7 @@ const INITIAL_STOCK_DATA = [
     tva: 20,
     image: "/placeholder.svg?height=100&width=100",
   },
-]
+];
 
 const INITIAL_MOVEMENTS = [
   {
@@ -170,23 +170,23 @@ const INITIAL_MOVEMENTS = [
     previousStock: 50,
     newStock: 100,
   },
-]
+];
 
-const StockContext = createContext()
+const StockContext = createContext();
 
 export function StockProvider({ children }) {
-  const { toast } = useToast()
-  const [stockData, setStockData] = useState(INITIAL_STOCK_DATA)
-  const [movements, setMovements] = useState(INITIAL_MOVEMENTS)
-  const [lastRefresh, setLastRefresh] = useState(new Date())
+  const { toast } = useToast();
+  const [stockData, setStockData] = useState(INITIAL_STOCK_DATA);
+  const [movements, setMovements] = useState(INITIAL_MOVEMENTS);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
 
   // Calculer la valeur du stock
   const updateStockValues = (data) => {
     return data.map((item) => ({
       ...item,
       value: item.currentStock * item.cost,
-    }))
-  }
+    }));
+  };
 
   // Ajouter un mouvement de stock
   const addStockMovement = (movement) => {
@@ -195,9 +195,9 @@ export function StockProvider({ children }) {
       id: movements.length + 1,
       date: new Date().toISOString(),
       user: movement.user || "Système",
-    }
+    };
 
-    setMovements((prev) => [newMovement, ...prev])
+    setMovements((prev) => [newMovement, ...prev]);
 
     // Mettre à jour le stock du produit
     setStockData((prev) => {
@@ -206,56 +206,59 @@ export function StockProvider({ children }) {
           const newStock =
             movement.type === "entrée"
               ? item.currentStock + movement.quantity
-              : item.currentStock - Math.abs(movement.quantity)
+              : item.currentStock - Math.abs(movement.quantity);
 
           return {
             ...item,
             currentStock: Math.max(0, newStock),
             lastUpdated: new Date().toISOString(),
-          }
+          };
         }
-        return item
-      })
-      return updateStockValues(updated)
-    })
+        return item;
+      });
+      return updateStockValues(updated);
+    });
 
-    return newMovement
-  }
+    return newMovement;
+  };
 
   // Vérifier la disponibilité du stock
   const checkStockAvailability = (productId, quantity) => {
-    const product = stockData.find((p) => p.id === productId)
-    if (!product) return { available: false, reason: "Produit non trouvé" }
+    const product = stockData.find((p) => p.id === productId);
+    if (!product) return { available: false, reason: "Produit non trouvé" };
 
     if (product.currentStock < quantity) {
       return {
         available: false,
         reason: `Stock insuffisant (${product.currentStock} disponible)`,
         availableStock: product.currentStock,
-      }
+      };
     }
 
-    return { available: true }
-  }
+    return { available: true };
+  };
 
   // Traiter une vente POS
   const processPOSSale = (saleData) => {
-    const movements = []
-    let hasStockIssues = false
-    const stockIssues = []
+    const movements = [];
+    let hasStockIssues = false;
+    const stockIssues = [];
 
     // Vérifier d'abord la disponibilité de tous les produits
     for (const item of saleData.items) {
-      const product = stockData.find((p) => p.id === item.productId)
+      const product = stockData.find((p) => p.id === item.productId);
       if (product) {
-        const availability = checkStockAvailability(item.productId, item.quantity)
+        const availability = checkStockAvailability(
+          item.productId,
+          item.quantity
+        );
         if (!availability.available) {
-          hasStockIssues = true
+          hasStockIssues = true;
           stockIssues.push({
             product: product.productName,
             requested: item.quantity,
             available: availability.availableStock || 0,
-          })
+          });
         }
       }
     }
@@ -265,7 +268,7 @@ export function StockProvider({ children }) {
         success: false,
         error: "Stock insuffisant",
         issues: stockIssues,
-      }
+      };
     }
 
     // Traiter les mouvements de stock
@@ -278,56 +281,64 @@ export function StockProvider({ children }) {
         reason: "Vente POS",
         reference: saleData.id,
         user: saleData.cashier || "Caissier",
-        previousStock: stockData.find((p) => p.id === item.productId)?.currentStock || 0,
-        newStock: (stockData.find((p) => p.id === item.productId)?.currentStock || 0) - item.quantity,
-      })
-      movements.push(movement)
+        previousStock:
+          stockData.find((p) => p.id === item.productId)?.currentStock || 0,
+        newStock:
+          (stockData.find((p) => p.id === item.productId)?.currentStock || 0) -
+          item.quantity,
+      });
+      movements.push(movement);
     }
 
     // Vérifier les alertes de stock après la vente
-    const lowStockAlerts = []
+    const lowStockAlerts = [];
     stockData.forEach((product) => {
-      const updatedProduct = stockData.find((p) => p.id === product.id)
-      if (updatedProduct && updatedProduct.currentStock <= updatedProduct.minStock) {
-        lowStockAlerts.push(updatedProduct)
+      const updatedProduct = stockData.find((p) => p.id === product.id);
+      if (
+        updatedProduct &&
+        updatedProduct.currentStock <= updatedProduct.minStock
+      ) {
+        lowStockAlerts.push(updatedProduct);
       }
-    })
+    });
 
     if (lowStockAlerts.length > 0) {
       toast({
         title: "Alerte Stock !",
         description: `${lowStockAlerts.length} produit(s) sous le seuil minimum`,
         variant: "destructive",
-      })
+      });
     }
 
     return {
       success: true,
       movements,
       lowStockAlerts,
-    }
-  }
+    };
+  };
 
   // Obtenir les produits avec stock disponible
   const getAvailableProducts = () => {
-    return stockData.filter((product) => product.currentStock > 0)
-  }
+    return stockData.filter((product) => product.currentStock > 0);
+  };
 
   // Obtenir les alertes de stock
   const getStockAlerts = () => {
-    const lowStock = stockData.filter((item) => item.currentStock <= item.minStock && item.currentStock > 0)
-    const outOfStock = stockData.filter((item) => item.currentStock === 0)
-    return { lowStock, outOfStock }
-  }
+    const lowStock = stockData.filter(
+      (item) => item.currentStock <= item.minStock && item.currentStock > 0
+    );
+    const outOfStock = stockData.filter((item) => item.currentStock === 0);
+    return { lowStock, outOfStock };
+  };
 
   // Actualiser les données
   const refreshData = () => {
-    setLastRefresh(new Date())
+    setLastRefresh(new Date());
     toast({
       title: "Données Actualisées",
       description: "Les informations de stock ont été mises à jour",
-    })
-  }
+    });
+  };
 
   const value = {
     stockData: updateStockValues(stockData),
@@ -341,15 +352,17 @@ export function StockProvider({ children }) {
     refreshData,
     setStockData,
     setMovements,
-  }
+  };
 
-  return <StockContext.Provider value={value}>{children}</StockContext.Provider>
+  return (
+    <StockContext.Provider value={value}>{children}</StockContext.Provider>
+  );
 }
 
 export function useStock() {
-  const context = useContext(StockContext)
+  const context = useContext(StockContext);
   if (!context) {
-    throw new Error("useStock must be used within a StockProvider")
+    throw new Error("useStock must be used within a StockProvider");
   }
-  return context
+  return context;
 }

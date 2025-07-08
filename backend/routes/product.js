@@ -7,9 +7,8 @@ import {
   updateProduct,
   deleteProduct,
   searchProducts,
-  getProductsByCategory,
-  getFilterOptions,
-  getProductSalesReport,
+  getProductBybarcode,
+  getStockCounts,
 } from "../controller/product.js";
 import { upload } from "../storage/cloudinaryConfig.js";
 import { verifyAdmin, verifyToken } from "../middleware/authMiddleware.js";
@@ -17,18 +16,17 @@ import { verifyAdmin, verifyToken } from "../middleware/authMiddleware.js";
 const router = express.Router();
 router.get("/products/search", searchProducts);
 router.get("/products", getAllProducts);
-router.get("/products/filter-options", getFilterOptions);
-router.get("/products/category/:parentId", getProductsByCategory);
-router.post("/products", verifyToken, verifyAdmin, upload.any(), createProduct);
+router.get("/products/stock", getStockCounts);
+router.get("/products/barcode/:barcode", getProductBybarcode);
+router.post("/products", upload.single("image"), createProduct);
 router.get("/products/:id", getProductById);
-router.put("/products/:id", verifyToken, verifyAdmin, upload.any(), updateProduct);
+router.put(
+  "/products/:id",
 
-router.delete("/products/:id", verifyToken, verifyAdmin, deleteProduct);
-router.get(
-  "/product-sales-report",
-  verifyToken,
-  verifyAdmin,
-  getProductSalesReport
+  upload.single("image"),
+  updateProduct
 );
+
+router.delete("/products/:id", deleteProduct);
 
 export default router;

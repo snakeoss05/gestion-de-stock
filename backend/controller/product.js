@@ -33,65 +33,56 @@ export const createProduct = async (req, res) => {
       productName,
       brandName,
       category,
-      description,
-      stock,
-      discount,
-      tva,
-      code_barre,
-      prix_achat,
-      prix_passager,
-      prix_gros,
       prix_detail,
-      image,
-      place,
-      gros_qty,
+      prix_gros,
+      prix_passager,
+      currentStock,
+      minStock,
+      maxStock,
+      code_barre,
+      location,
+      cost,
+      tva,
+      description,
+      discount,
     } = req.body;
 
-    // Validate required fields
-    const colors = JSON.parse(req.body.colors || "[]");
-    colors.forEach((color) => {
-      if (!color.colorName || !color.images || color.images.length === 0) {
-        throw new Error(
-          `Each color must have at least one image. Invalid color: ${color.colorName}`
-        );
+    let imageUrl = "/placeholder.svg?height=100&width=100"; // default fallback
+
+    // ✅ Multer uploads the file to `req.file`
+    if (req.file) {
+      const result = await uploadProductImage(req.file.path);
+      if (result.success) {
+        imageUrl = result.imageUrl;
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Failed to upload image",
+        });
       }
-    });
-    if (!productName || !brandName || !category || !stock || !price) {
-      return res
-        .status(400)
-        .json({ success: false, message: "All fields are required" });
     }
 
-    // Ensure file path is correct
-    const filePath = file.path;
-
-    // Upload the file to Cloudinary
-    const result = await uploadProductImage(filePath);
-
-    // Create the new product
     const newProduct = new Product({
       productName,
       brandName,
       category,
-      image: result.imageUrl,
-      description: description || "", // Default to empty string if missing
-      discount: discount || 0, // Default discount to 0 if missing
-      stock,
-      tva,
-      code_barre,
-      prix_achat,
-      prix_passager,
-      prix_gros,
       prix_detail,
-      image,
-      place,
-      gros_qty,
+      prix_gros,
+      prix_passager,
+      currentStock,
+      minStock: minStock || 0,
+      maxStock: maxStock || 0,
+      code_barre,
+      location,
+      cost,
+      tva: tva || 0,
+      description: description || "",
+      discount: discount || 0,
+      image: imageUrl,
     });
 
-    // Save to the database
     await newProduct.save();
 
-    // Return the created product
     res.status(201).json({ success: true, data: newProduct });
   } catch (error) {
     console.error("Error creating product:", error);
@@ -103,18 +94,27 @@ export const createProduct = async (req, res) => {
 export const getAllProducts = async (req, res) => {
   try {
     const {
+      limit = 10,
+      page = 1,
+      productName,
+      brandName,
+      category,
+      prix_detail,
+      prix_gros,
+      currentStock,
+      minStock,
+      status,
+      maxStock,
+      code_barre,
+      location,
+      cost,
+      tva,
+      description,
+      discount,
+      gros_qty,
+      sortField,
       minPrice,
       maxPrice,
-      limit = 10,
-      category,
-      discount,
-      name,
-      stock,
-      page = 1,
-      department,
-      brandName,
-
-      sortField,
       sortOrder = "desc",
     } = req.query;
 
@@ -126,27 +126,36 @@ export const getAllProducts = async (req, res) => {
     const filter = {};
 
     // Category filter
-    if (category) filter.category = category;
+    if (productName) filter.productName = productName;
+    if (brandName) filter.brandName = brandName;
+    if (category && category !== "all") {
+      filter.category = category;
+    }
+    if (location) filter.location = location;
+    if (code_barre) filter.code_barre = code_barre;
+    if (prix_detail) filter.prix_detail = prix_detail;
+    if (prix_gros) filter.prix_gros = prix_gros;
+    if (currentStock) filter.currentStock = currentStock;
+    if (minStock) filter.minStock = minStock;
+    if (maxStock) filter.maxStock = maxStock;
+    if (cost) filter.cost = cost;
+    if (tva) filter.tva = tva;
+    if (description) filter.description = description;
+    if (gros_qty) filter.gros_qty = gros_qty;
+    if (status === "low_stock") filter.currentStock = { $lte: 5 };
+    if (status === "out_of_stock") filter.currentStock = 0;
+    if (status === "active") filter.currentStock = { $gt: 0 };
 
     // Department and child categories filter
-    if (department) {
-      const childCategories = await Category.find({
-        parentCategory: department,
-      });
-      const childCategoryIds = childCategories.map((cat) => cat._id);
-      childCategoryIds.push(department);
-      filter.category = { $in: childCategoryIds };
-    }
 
     // Discount filter
     if (discount === "true") filter.discount = { $ne: 0 };
 
     // Name filter (case insensitive)
-    if (name) filter.productName = { $regex: name, $options: "i" };
 
     // Price range filter
     if (minPrice && maxPrice) {
-      filter.price = { $gte: Number(minPrice), $lte: Number(maxPrice) };
+      filter.prix_detail = { $gte: Number(minPrice), $lte: Number(maxPrice) };
     }
 
     // Sorting by price (detaillant price)
@@ -155,8 +164,8 @@ export const getAllProducts = async (req, res) => {
     }
 
     // Stock filter
-    if (stock) {
-      filter.stock = stock > 0 ? { $gte: Number(stock) } : 0;
+    if (currentStock) {
+      filter.currentStock = currentStock > 0 ? { $gte: Number(stock) } : 0;
     }
 
     // Brand name filter
@@ -176,6 +185,7 @@ export const getAllProducts = async (req, res) => {
 
     // Fetch products with filters and pagination
     const products = await Product.find(filter)
+      .populate("category")
       .sort(sortOptions)
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit));
@@ -197,6 +207,22 @@ export const getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id).populate("category");
 
+    if (!product) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
+    }
+    res.status(200).json({ success: true, data: product });
+  } catch (error) {
+    console.error("Error fetching product:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch product" });
+  }
+};
+export const getProductBybarcode = async (req, res) => {
+  try {
+    const product = await Product.findOne({ code_barre: req.params.barcode });
     if (!product) {
       return res
         .status(404)
@@ -272,17 +298,19 @@ export const deleteProduct = async (req, res) => {
 };
 export const searchProducts = async (req, res) => {
   try {
-    const name = req.query.name;
-    if (!name) {
-      return res.status(400).json({ error: "Name parameter is required" });
+    const seachterm = req.query.searchterm;
+    if (!seachterm || seachterm.length < 1) {
+      return res.status(400).json({ error: "seachterm too short" });
     }
-    const filter = {};
-    if (name) {
-      filter.productName = { $regex: name, $options: "i" };
-    }
-    const products = await Product.find(filter)
-      .limit(8)
-      .select("productName price discount  colors stock category");
+
+    const products = await Product.find({
+      $or: [
+        { productName: { $regex: seachterm, $options: "i" } }, // case-insensitive match
+        { code_barre: { $regex: seachterm, $options: "i" } },
+
+        { brandName: { $regex: seachterm, $options: "i" } }, // same for barcode
+      ],
+    }).limit(8);
 
     return res.status(200).json({
       data: products,
@@ -291,165 +319,27 @@ export const searchProducts = async (req, res) => {
     res.status(500).json({ message: "Server error", error });
   }
 };
-
-// Get filter options
-export const getFilterOptions = async (req, res) => {
+export const getStockCounts = async (req, res) => {
   try {
-    const brands = await Product.distinct("brandName");
-    const categories = await Product.distinct("category");
-    const prices = await Product.find().select("prices");
-
-    const minPrice = Math.min(...prices.map((p) => p.price));
-    const maxPrice = Math.max(...prices.map((p) => p.price));
-
-    res.json({ brands, categories, minPrice, maxPrice });
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error });
-  }
-};
-
-// Get products by category
-export const getProductsByCategory = async (req, res) => {
-  try {
-    const { category } = req.params;
-    const products = await Product.find({ category });
-    res.json(products);
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error });
-  }
-};
-
-// Get product sales report
-export const getProductSalesReport = async (req, res) => {
-  try {
-    let { page = 1, limit = 10 } = req.query;
-    page = parseInt(page);
-    limit = parseInt(limit);
-    const skip = (page - 1) * limit;
-
-    const startOfMonth = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1
-    );
-
-    // Aggregate query
-    const productSalesPipeline = [
-      {
-        $lookup: {
-          from: "categories",
-          localField: "category",
-          foreignField: "_id",
-          as: "categoryData",
-        },
-      },
-      { $unwind: { path: "$categoryData", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "orders",
-          localField: "_id",
-          foreignField: "orderItems.product",
-          as: "orderData",
-        },
-      },
-      {
-        $addFields: {
-          monthlyOrders: {
-            $filter: {
-              input: "$orderData",
-              as: "order",
-              cond: { $gte: ["$$order.createdAt", startOfMonth] },
-            },
-          },
-        },
-      },
-      { $unwind: { path: "$monthlyOrders", preserveNullAndEmptyArrays: true } },
-      {
-        $unwind: {
-          path: "$monthlyOrders.orderItems",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      {
-        $match: {
-          $expr: { $eq: ["$monthlyOrders.orderItems.product", "$_id"] },
-        },
-      },
-      {
-        $group: {
-          _id: "$_id",
-          name: { $first: "$productName" },
-          category: { $first: "$categoryData.name" },
-          stock: { $first: "$stock" },
-          totalSales: { $sum: "$monthlyOrders.orderItems.qty" }, // Total quantity sold
-          saleCount: { $sum: 1 }, // Count number of times sold
-          revenue: {
-            $sum: {
-              $multiply: [
-                "$monthlyOrders.orderItems.qty",
-                "$monthlyOrders.orderItems.price",
-              ],
-            },
-          },
-          lastUpdated: { $max: "$updatedAt" },
-          productImage: { $first: "$productImage" },
-        }, // Get first image
-      },
-
-      {
-        $project: {
-          _id: 0,
-          productId: "$_id",
-          name: 1,
-          category: { $ifNull: ["$category", "Unknown"] },
-          stock: 1,
-          totalSales: { $ifNull: ["$totalSales", 0] },
-          saleCount: { $ifNull: ["$saleCount", 0] }, // Count of sales
-          revenue: { $ifNull: ["$revenue", 0] },
-          lastUpdated: 1,
-          productImage: { $ifNull: ["$productImage", "default-image.jpg"] }, // Default image if none
-        },
-      },
-      { $sort: { revenue: -1 } }, // Sort by highest revenue
-      { $skip: skip },
-      { $limit: limit },
-    ];
-
-    // Get total count for pagination
+    const actifsCount = await Product.countDocuments({
+      currentStock: { $gt: 0 },
+    });
+    const faibleCount = await Product.countDocuments({
+      currentStock: { $gt: 0, $lte: 5 }, // fallback to 5 if null
+    });
+    const ruptureCount = await Product.countDocuments({ currentStock: 0 });
     const totalProducts = await Product.countDocuments();
-    const totalPages = Math.ceil(totalProducts / limit);
-
-    // Get total sales across all products
-    const totalSalesCount = await Order.aggregate([
-      { $unwind: "$orderItems" },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: "$orderItems.qty" },
-          saleCount: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const productSales = await Product.aggregate(productSalesPipeline);
-
     res.json({
-      currentPage: page,
-      totalPages,
-      totalProducts,
-      totalSales: totalSalesCount[0]?.totalSales || 0, // Total quantity sold
-      totalOrders: totalSalesCount[0]?.saleCount || 0, // Total number of orders
-      pageSize: productSales.length,
-      products: productSales,
+      actifs: actifsCount,
+      faibleStock: faibleCount,
+      rupture: ruptureCount,
+      totalProducts: totalProducts,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching product sales report", error });
+    console.error(error);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 };
-
-// Export product sales report
 
 export const checkStockLevel = async (productId) => {
   const product = await Product.findById(productId);
